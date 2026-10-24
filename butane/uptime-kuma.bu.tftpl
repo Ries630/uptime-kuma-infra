@@ -1,0 +1,174 @@
+variant: flatcar
+version: 1.1.0
+
+passwd:
+  users:
+    - name: core
+      ssh_authorized_keys: ${jsonencode(ssh_authorized_keys)}
+
+storage:
+  filesystems:
+    # 既存のファイルシステムがあれば消さずにそのまま使う。
+    - device: /dev/disk/by-id/scsi-0Google_PersistentDisk_data
+      format: ext4
+      label: kuma-data
+      wipe_filesystem: false
+      path: /mnt/data
+      with_mount_unit: true
+  files:
+    # OS 更新後の再起動は月曜 4:00〜5:00 JST に限る（Flatcar の時刻は UTC）。
+    - path: /etc/flatcar/update.conf
+      overwrite: true
+      mode: 0644
+      contents:
+        inline: |
+          REBOOT_STRATEGY=reboot
+          LOCKSMITHD_REBOOT_WINDOW_START="Sun 19:00"
+          LOCKSMITHD_REBOOT_WINDOW_LENGTH=1h
+    - path: /etc/sysctl.d/90-swappiness.conf
+      mode: 0644
+      contents:
+        inline: |
+          vm.swappiness=10
+    - path: /etc/uptime-kuma/cloudflared.env
+      mode: 0600
+      contents:
+        inline: |
+          TUNNEL_TOKEN=${tunnel_token}
+    - path: /etc/uptime-kuma/tailscale.env
+      mode: 0600
+      contents:
+        inline: |
+          TS_AUTHKEY=${tailscale_auth_key}
+
+systemd:
+  units:
+    # e2-micro は RAM が 1GB 弱のため、1GB の swap を足す。
+    - name: swapfile.service
+      enabled: true
+      contents: |
+        [Unit]
+        Description=1GB の swapfile を作る
+        ConditionPathExists=!/var/swapfile
+
+        [Service]
+        Type=oneshot
+        ExecStart=/usr/bin/fallocate -l 1G /var/swapfile
+        ExecStart=/usr/bin/chmod 600 /var/swapfile
+        ExecStart=/usr/sbin/mkswap /var/swapfile
+
+        [Install]
+        WantedBy=multi-user.target
+    - name: var-swapfile.swap
+      enabled: true
+      contents: |
+        [Unit]
+        Requires=swapfile.service
+        After=swapfile.service
+
+        [Swap]
+        What=/var/swapfile
+
+        [Install]
+        WantedBy=multi-user.target
+
+    # 監視先へは Tailscale（自宅の subnet router 経由を含む）で届く。
+    - name: tailscale.service
+      enabled: true
+      contents: |
+        [Unit]
+        Description=Tailscale
+        Requires=docker.service mnt-data.mount
+        After=docker.service mnt-data.mount network-online.target
+        Wants=network-online.target
+
+        [Service]
+        EnvironmentFile=/etc/uptime-kuma/tailscale.env
+        ExecStartPre=-/usr/bin/docker rm -f tailscale
+        ExecStartPre=-/usr/bin/docker pull tailscale/tailscale:stable
+        ExecStart=/usr/bin/docker run --name tailscale --network host \
+          --cap-add NET_ADMIN --cap-add NET_RAW --device /dev/net/tun \
+          -v /mnt/data/tailscale:/var/lib/tailscale \
+          -e TS_AUTHKEY -e TS_AUTH_ONCE=true \
+          -e TS_STATE_DIR=/var/lib/tailscale -e TS_USERSPACE=false \
+          -e TS_HOSTNAME=uptime-kuma -e TS_ACCEPT_DNS=false \
+          -e TS_EXTRA_ARGS=--accept-routes \
+          tailscale/tailscale:stable
+        ExecStop=/usr/bin/docker stop tailscale
+        Restart=always
+        RestartSec=10s
+
+        [Install]
+        WantedBy=multi-user.target
+
+    - name: uptime-kuma.service
+      enabled: true
+      contents: |
+        [Unit]
+        Description=Uptime Kuma
+        Requires=docker.service mnt-data.mount
+        After=docker.service mnt-data.mount tailscale.service
+
+        [Service]
+        ExecStartPre=-/usr/bin/docker rm -f uptime-kuma
+        ExecStartPre=-/usr/bin/docker pull louislam/uptime-kuma:2
+        ExecStart=/usr/bin/docker run --name uptime-kuma --network host \
+          -v /mnt/data/uptime-kuma:/app/data \
+          louislam/uptime-kuma:2
+        ExecStop=/usr/bin/docker stop uptime-kuma
+        Restart=always
+        RestartSec=10s
+
+        [Install]
+        WantedBy=multi-user.target
+
+    - name: cloudflared.service
+      enabled: true
+      contents: |
+        [Unit]
+        Description=Cloudflare Tunnel
+        Requires=docker.service
+        After=docker.service uptime-kuma.service network-online.target
+        Wants=network-online.target
+
+        [Service]
+        EnvironmentFile=/etc/uptime-kuma/cloudflared.env
+        ExecStartPre=-/usr/bin/docker rm -f cloudflared
+        ExecStartPre=-/usr/bin/docker pull cloudflare/cloudflared:latest
+        ExecStart=/usr/bin/docker run --name cloudflared --network host \
+          -e TUNNEL_TOKEN \
+          cloudflare/cloudflared:latest tunnel --no-autoupdate run
+        ExecStop=/usr/bin/docker stop cloudflared
+        Restart=always
+        RestartSec=10s
+
+        [Install]
+        WantedBy=multi-user.target
+
+    # コンテナのイメージは週 1 回まとめて更新する。先に pull してから再起動し、停止時間を短くする。
+    - name: container-refresh.service
+      contents: |
+        [Unit]
+        Description=コンテナのイメージを更新して再起動する
+
+        [Service]
+        Type=oneshot
+        ExecStart=/usr/bin/docker pull tailscale/tailscale:stable
+        ExecStart=/usr/bin/docker pull louislam/uptime-kuma:2
+        ExecStart=/usr/bin/docker pull cloudflare/cloudflared:latest
+        ExecStart=/usr/bin/systemctl restart tailscale.service uptime-kuma.service cloudflared.service
+        ExecStart=/usr/bin/docker image prune -f
+    - name: container-refresh.timer
+      enabled: true
+      contents: |
+        [Unit]
+        Description=コンテナのイメージを週 1 回更新する
+
+        [Timer]
+        # 18:00 UTC = 月曜 3:00 JST。OS 更新の再起動枠（4:00 JST〜）より前に置く。
+        OnCalendar=Sun *-*-* 18:00:00
+        RandomizedDelaySec=30m
+        Persistent=true
+
+        [Install]
+        WantedBy=timers.target

@@ -1,0 +1,9 @@
+# terraform.tfvars にコピーして値を入れる（terraform.tfvars はコミットしない）。
+# tailscale_auth_key は環境変数 TF_VAR_tailscale_auth_key で渡す。
+
+admin_emails        = ["you@example.com"]
+alert_email         = "you@example.com"
+ssh_authorized_keys = ["ssh-ed25519 AAAA... you@example"]
+
+# データ移行が済んだら true にして公開ホスト名を新しいトンネルへ向ける。
+# dns_cutover = true
