@@ -49,6 +49,10 @@ systemd:
       contents: |
         [Unit]
         Description=1GB の swapfile を作る
+        # 既定の依存（basic.target の後）だと swap.target との間で順序が循環するため外す。
+        DefaultDependencies=no
+        RequiresMountsFor=/var
+        Before=var-swapfile.swap
         ConditionPathExists=!/var/swapfile
 
         [Service]
@@ -95,6 +99,8 @@ systemd:
           -e TS_EXTRA_ARGS=--accept-routes \
           tailscale/tailscale:stable
         ExecStop=/usr/bin/docker stop tailscale
+        # e2-micro ではイメージの取得が既定の 90 秒を超えるため延ばす。
+        TimeoutStartSec=15min
         Restart=always
         RestartSec=10s
 
@@ -137,6 +143,8 @@ systemd:
           -v /mnt/data/uptime-kuma:/app/data \
           louislam/uptime-kuma:2
         ExecStop=/usr/bin/docker stop uptime-kuma
+        # e2-micro ではイメージの取得が既定の 90 秒を超えるため延ばす。
+        TimeoutStartSec=15min
         Restart=always
         RestartSec=10s
 
@@ -160,6 +168,8 @@ systemd:
           -e TUNNEL_TOKEN \
           cloudflare/cloudflared:latest tunnel --no-autoupdate run
         ExecStop=/usr/bin/docker stop cloudflared
+        # e2-micro ではイメージの取得が既定の 90 秒を超えるため延ばす。
+        TimeoutStartSec=15min
         Restart=always
         RestartSec=10s
 
@@ -174,6 +184,7 @@ systemd:
 
         [Service]
         Type=oneshot
+        TimeoutStartSec=30min
         ExecStart=/usr/bin/docker pull tailscale/tailscale:stable
         ExecStart=/usr/bin/docker pull louislam/uptime-kuma:2
         ExecStart=/usr/bin/docker pull cloudflare/cloudflared:latest
