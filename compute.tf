@@ -88,8 +88,9 @@ resource "google_compute_instance" "uptime_kuma" {
     }
   }
 
+  # Ignition にはトンネルのトークンと Tailscale の認証キーが入るため、plan に出さない。
   metadata = {
-    user-data = data.ct_config.uptime_kuma.rendered
+    user-data = sensitive(data.ct_config.uptime_kuma.rendered)
   }
 
   # サービスアカウントは付けない。VM から GCP の API を呼ぶ処理が無いため。

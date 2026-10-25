@@ -55,11 +55,15 @@ variable "legacy_tunnel_id" {
 variable "admin_emails" {
   description = "Cloudflare Access で管理画面へのログインを許すメールアドレス。"
   type        = list(string)
+  # public リポジトリの plan 出力に載せないため sensitive にする。
+  sensitive = true
 }
 
 variable "alert_email" {
   description = "外形監視の失敗を通知するメールアドレス。"
   type        = string
+  # public リポジトリの plan 出力に載せないため sensitive にする。
+  sensitive = true
 }
 
 variable "ssh_authorized_keys" {
