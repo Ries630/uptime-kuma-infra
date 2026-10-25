@@ -58,6 +58,9 @@ resource "google_iam_workload_identity_pool_provider" "github" {
 resource "google_service_account" "terraform_plan" {
   account_id   = "terraform-plan"
   display_name = "terraform plan (GitHub Actions)"
+
+  # IAM API が有効になる前に作ろうとして失敗しないよう待つ。IAM のバインドはこのアカウントを参照するので、合わせて後に回る。
+  depends_on = [google_project_service.ci]
 }
 
 resource "google_service_account_iam_member" "terraform_plan_wif" {
