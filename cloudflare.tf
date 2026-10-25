@@ -1,13 +1,24 @@
-# VM 上の cloudflared が使うトンネル。自宅側のトンネルを経由しないため、自宅が落ちてもステータスページは見える。
-resource "cloudflare_zero_trust_tunnel_cloudflared" "uptime_kuma" {
-  account_id = var.cloudflare_account_id
-  name       = "uptime-kuma-gce"
-  config_src = "cloudflare"
+# トンネルのシークレットは Terraform 側で作る。
+# token の data source は Tunnel Write 権限を要するため、使わずに token を組み立て、plan を読み取り権限で流せるようにする。
+resource "random_bytes" "tunnel_secret" {
+  length = 32
 }
 
-data "cloudflare_zero_trust_tunnel_cloudflared_token" "uptime_kuma" {
-  account_id = var.cloudflare_account_id
-  tunnel_id  = cloudflare_zero_trust_tunnel_cloudflared.uptime_kuma.id
+# VM 上の cloudflared が使うトンネル。自宅側のトンネルを経由しないため、自宅が落ちてもステータスページは見える。
+resource "cloudflare_zero_trust_tunnel_cloudflared" "uptime_kuma" {
+  account_id    = var.cloudflare_account_id
+  name          = "uptime-kuma-gce"
+  config_src    = "cloudflare"
+  tunnel_secret = random_bytes.tunnel_secret.base64
+}
+
+locals {
+  # cloudflared の TUNNEL_TOKEN の形式（アカウント ID・トンネル ID・シークレットの JSON を base64 にしたもの）。
+  tunnel_token = base64encode(jsonencode({
+    a = var.cloudflare_account_id
+    t = cloudflare_zero_trust_tunnel_cloudflared.uptime_kuma.id
+    s = random_bytes.tunnel_secret.base64
+  }))
 }
 
 # ホスト名ごと Uptime Kuma へ流す。どのパスを公開するかは Access 側で決める。

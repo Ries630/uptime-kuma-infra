@@ -49,7 +49,7 @@ data "ct_config" "uptime_kuma" {
   strict = true
   content = templatefile("${path.module}/butane/uptime-kuma.bu.tftpl", {
     ssh_authorized_keys = var.ssh_authorized_keys
-    tunnel_token        = data.cloudflare_zero_trust_tunnel_cloudflared_token.uptime_kuma.token
+    tunnel_token        = local.tunnel_token
     tailscale_auth_key  = var.tailscale_auth_key
   })
 }

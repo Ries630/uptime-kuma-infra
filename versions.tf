@@ -10,6 +10,10 @@ terraform {
       source  = "cloudflare/cloudflare"
       version = "~> 5.28"
     }
+    random = {
+      source  = "hashicorp/random"
+      version = "~> 3.9"
+    }
     ct = {
       source  = "poseidon/ct"
       version = "~> 0.14"
