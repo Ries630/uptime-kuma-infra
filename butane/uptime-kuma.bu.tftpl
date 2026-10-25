@@ -77,6 +77,8 @@ systemd:
         WantedBy=multi-user.target
 
     # 監視先へは Tailscale（自宅の subnet router 経由を含む）で届く。
+    # TS_ACCEPT_DNS=true で MagicDNS（100.100.100.100）に split DNS を効かせる。
+    # 書き換わるのはこのコンテナの resolv.conf だけで、ホストの名前解決は変わらない。
     - name: tailscale.service
       enabled: true
       contents: |
@@ -95,7 +97,7 @@ systemd:
           -v /mnt/data/tailscale:/var/lib/tailscale \
           -e TS_AUTHKEY -e TS_AUTH_ONCE=true \
           -e TS_STATE_DIR=/var/lib/tailscale -e TS_USERSPACE=false \
-          -e TS_HOSTNAME=uptime-kuma -e TS_ACCEPT_DNS=false \
+          -e TS_HOSTNAME=uptime-kuma -e TS_ACCEPT_DNS=true \
           -e TS_EXTRA_ARGS=--accept-routes \
           tailscale/tailscale:stable
         ExecStop=/usr/bin/docker stop tailscale
@@ -139,7 +141,10 @@ systemd:
         [Service]
         ExecStartPre=-/usr/bin/docker rm -f uptime-kuma
         ExecStartPre=-/usr/bin/docker pull louislam/uptime-kuma:2
+        # 監視先の home.arpa 名は Tailscale の split DNS（home.arpa → UDR7）で引くため、MagicDNS に問い合わせる。
+        # それ以外の名前は MagicDNS から GCE の DNS へ転送される。
         ExecStart=/usr/bin/docker run --name uptime-kuma --network kuma -p 3001:3001 \
+          --dns 100.100.100.100 \
           -v /mnt/data/uptime-kuma:/app/data \
           louislam/uptime-kuma:2
         ExecStop=/usr/bin/docker stop uptime-kuma
