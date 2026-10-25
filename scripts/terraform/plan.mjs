@@ -52,6 +52,26 @@ export function classifyPlanError(error) {
   return /\b(401|403)\b|PERMISSION_DENIED|Unauthorized|Authentication error/i.test(stderr) ? 'authorization' : 'unknown';
 }
 
+/**
+ * stderr から、公開しても問題ない手がかりだけを抜き出す。
+ * 対象はリソースのアドレス（リポジトリのコードに書かれている）、GCP の権限名、どの API が拒否したかに限り、エラー本文は出さない。
+ */
+export function describePlanError(error) {
+  const stderr = Buffer.isBuffer(error?.stderr) ? error.stderr.toString('utf8') :
+    typeof error?.stderr === 'string' ? error.stderr : '';
+  const found = new Set();
+  for (const [, address] of stderr.matchAll(/^[\s│]*with ((?:data\.)?[a-z0-9_]+\.[a-z0-9_]+(?:\["[a-zA-Z0-9_./-]+"\])?),/gm)) {
+    found.add(`resource:${address}`);
+  }
+  // googleapi の 'Permission 'x.y.z' denied' と、エラー詳細の JSON の "permission": "x.y.z" の2つの書き方がある。
+  for (const [, permission] of stderr.matchAll(/(?:Permission '|"permission":\s*")([a-z]+(?:\.[a-zA-Z]+){2})['"]/g)) {
+    found.add(`permission:${permission}`);
+  }
+  if (/googleapi/.test(stderr)) found.add('api:google');
+  if (/api\.cloudflare\.com/.test(stderr)) found.add('api:cloudflare');
+  return [...found].sort().slice(0, 20).join(' ');
+}
+
 /** CI の秘密の入力から saved plan を作り、検証済みの Markdown だけを残す。 */
 export function runPlan({ root = '.', output, event, env = process.env,
   run = execute, render = renderReport, onStage = () => {} } = {}) {
@@ -102,7 +122,7 @@ if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) 
       runPlan({ event, output: process.argv[2], onStage: (value) => { stage = value; } });
     }
   } catch (error) {
-    console.error(`PR の plan 処理を中止しました。stage=${stage} category=${classifyPlanError(error)}`);
+    console.error(`PR の plan 処理を中止しました。stage=${stage} category=${classifyPlanError(error)} detail=${describePlanError(error) || 'none'}`);
     process.exitCode = 1;
   }
 }

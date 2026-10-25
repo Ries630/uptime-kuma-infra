@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { classifyPlanError, isTrustedPull, parseInputs } from './plan.mjs';
+import { classifyPlanError, describePlanError, isTrustedPull, parseInputs } from './plan.mjs';
 
 const sha = 'a'.repeat(40);
 
@@ -43,4 +43,25 @@ test('認可の失敗だけを区別する', () => {
   assert.equal(classifyPlanError({ stderr: 'googleapi: Error 403: Permission denied' }), 'authorization');
   assert.equal(classifyPlanError({ stderr: 'Error: Invalid reference' }), 'unknown');
   assert.equal(classifyPlanError(new Error('x')), 'unknown');
+});
+
+test('失敗の手がかりはアドレスと権限名だけを出す', () => {
+  const stderr = [
+    '╷',
+    '│ Error: Error reading NotificationChannel: googleapi: Error 403: Permission \'monitoring.notificationChannels.get\' denied on resource alert@example.com',
+    '│ ',
+    '│   with google_monitoring_notification_channel.email,',
+    '│   on monitoring.tf line 23, in resource "google_monitoring_notification_channel" "email":',
+    '│   with google_project_iam_member.terraform_plan["roles/viewer"],',
+    '╵',
+  ].join('\n');
+  const detail = describePlanError({ stderr });
+  assert.equal(detail, [
+    'api:google',
+    'permission:monitoring.notificationChannels.get',
+    'resource:google_monitoring_notification_channel.email',
+    'resource:google_project_iam_member.terraform_plan["roles/viewer"]',
+  ].join(' '));
+  assert.ok(!detail.includes('alert@example.com'));
+  assert.equal(describePlanError(new Error('x')), '');
 });
