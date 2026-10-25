@@ -29,6 +29,7 @@
 | [cloudflare.tf](cloudflare.tf) | トンネル、DNS、Access |
 | [monitoring.tf](monitoring.tf) | 外形監視と通知 |
 | [imports.tf](imports.tf) | 手作業で作った既存の Cloudflare リソースの取り込み |
+| [ci.tf](ci.tf) | PR の plan 用の Workload Identity Federation とサービスアカウント |
 
 ## 初回セットアップ
 
@@ -50,6 +51,26 @@
    | `TF_VAR_tailscale_auth_key` | 使い捨ての認証キー。初回ログイン後は不要 |
 
 3. `terraform.tfvars.example` を `terraform.tfvars` にコピーして値を入れ、`terraform init` する
+
+## PR の plan（tfplan2md）
+
+`.tf` や起動設定を変える PR では、[terraform-plan.yml](.github/workflows/terraform-plan.yml) が `terraform plan` を流し、[tfplan2md](https://github.com/oocx/tfplan2md) で整形した結果を PR のコメント 1 件に書く（push のたびに同じコメントを更新する）。
+
+- **動く条件**: リポジトリの所有者が、このリポジトリのブランチから出した PR だけ。fork や他人の PR では秘密の入力を渡さない
+- **公開する内容**: sensitive な値、入力の秘密、data source、state 全体は除いてから整形する（[report.mjs](scripts/terraform/report.mjs)）。秘密の値が残っていれば公開を止める
+- **権限**: GCP は plan 専用のサービスアカウント（viewer、securityReviewer、state の読み取り）。state のロックは取らない。Cloudflare は読み取り専用のトークン
+- **注意**: CI からも state 内の秘密（トンネルのシークレット）が読める
+
+GitHub の environment `terraform-plan` に次を登録する。
+
+| 種類 | 名前 | 値 |
+|---|---|---|
+| 変数 | `GCP_WORKLOAD_IDENTITY_PROVIDER` | `terraform output -raw github_workload_identity_provider` |
+| 変数 | `GCP_SERVICE_ACCOUNT` | `terraform output -raw github_plan_service_account` |
+| secret | `CLOUDFLARE_API_TOKEN` | 読み取り専用のトークン。Account: Cloudflare One Connector: cloudflared Read、Access: Apps and Policies Read、Access: Organizations, Identity Providers, and Groups Read／Zone: DNS Read、Zone Read |
+| secret | `TERRAFORM_INPUTS` | `terraform.tfvars` と同じ値の JSON。`admin_emails`、`alert_email`、`ssh_authorized_keys`、`tailscale_auth_key`、`dns_cutover` だけを受け付ける |
+
+`TERRAFORM_INPUTS` の値が手元とずれると、plan が VM の作り直しを出す（起動設定に入る値のため）。手元の値を変えたら secret も更新する。
 
 ## 運用
 
