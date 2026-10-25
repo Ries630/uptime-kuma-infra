@@ -139,7 +139,10 @@ systemd:
         [Service]
         ExecStartPre=-/usr/bin/docker rm -f uptime-kuma
         ExecStartPre=-/usr/bin/docker pull louislam/uptime-kuma:2
+        # 監視先の home.arpa 名は Tailscale の split DNS（home.arpa → UDR7）で引くため、MagicDNS に問い合わせる。
+        # それ以外の名前は MagicDNS から VM の DNS へ転送される。
         ExecStart=/usr/bin/docker run --name uptime-kuma --network kuma -p 3001:3001 \
+          --dns 100.100.100.100 \
           -v /mnt/data/uptime-kuma:/app/data \
           louislam/uptime-kuma:2
         ExecStop=/usr/bin/docker stop uptime-kuma

@@ -18,6 +18,7 @@
 - **データ**: Uptime Kuma のデータと Tailscale の state は `uptime-kuma-data` ディスクに置く。VM を作り直しても残り、毎日 2:00 JST にスナップショットを取る（7 日分）
 - **コンテナ**: Uptime Kuma（`louislam/uptime-kuma:2`）、Tailscale、cloudflared を systemd unit から `docker run` で動かす。イメージは月曜 3:00 JST に更新する
 - **公開**: VM 上の cloudflared から Cloudflare Tunnel で公開する。ステータスページに要るパスだけ Access を素通しにし、それ以外（管理画面）は Access の認証を通す
+- **名前解決**: Uptime Kuma の DNS は Tailscale の MagicDNS（`100.100.100.100`）に向ける。監視先は `<機器>.home.arpa` で指定し、tailnet の split DNS（`home.arpa` → UDR7 `10.23.10.1`）で引く
 - **受信ポート**: IAP 経由の SSH だけ。外部 IP は外向き通信のために付けている
 - **外形監視**: Cloud Monitoring の Uptime check が `/api/status-page/heartbeat/<slug>` を 5 分ごとに確認し、失敗が続くとメールで通知する
 
@@ -49,7 +50,9 @@
    | `CLOUDFLARE_API_TOKEN` | Account: Cloudflare Tunnel Write、Access: Apps and Policies Write、Access: Organizations, Identity Providers, and Groups Read／Zone: DNS Write、Zone Read |
    | `TF_VAR_tailscale_auth_key` | 使い捨ての認証キー。初回ログイン後は不要 |
 
-3. `terraform.tfvars.example` を `terraform.tfvars` にコピーして値を入れ、`terraform init` する
+3. Tailscale の管理画面（DNS → Nameservers → Add nameserver → Custom）で、`10.23.10.1` を `home.arpa` 用の split DNS として登録する
+
+4. `terraform.tfvars.example` を `terraform.tfvars` にコピーして値を入れ、`terraform init` する
 
 ## 運用
 
