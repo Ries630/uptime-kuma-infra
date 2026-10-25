@@ -21,6 +21,11 @@ jobs:
         run: |
           terraform init -backend=false -input=false
           terraform validate
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+      - name: plan スクリプトのテスト
+        run: node --test scripts/terraform/*.test.mjs
       - uses: terraform-linters/setup-tflint@v6
       - name: tflint
         env:

@@ -12,3 +12,13 @@ output "status_dns_target" {
   description = "公開ホスト名の現在の向き先。"
   value       = cloudflare_dns_record.status.content
 }
+
+output "github_workload_identity_provider" {
+  description = "GitHub の terraform-plan environment の変数 GCP_WORKLOAD_IDENTITY_PROVIDER に入れる値。"
+  value       = google_iam_workload_identity_pool_provider.github.name
+}
+
+output "github_plan_service_account" {
+  description = "GitHub の terraform-plan environment の変数 GCP_SERVICE_ACCOUNT に入れる値。"
+  value       = google_service_account.terraform_plan.email
+}
