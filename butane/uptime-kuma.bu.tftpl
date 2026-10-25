@@ -101,18 +101,39 @@ systemd:
         [Install]
         WantedBy=multi-user.target
 
+    # Uptime Kuma と cloudflared はブリッジネットワークに置き、メタデータサーバーへの通信を遮断する。
+    # user-data にはトンネルのトークンが入っており、ホストのネットワークからは認証なしで読めてしまうため。
+    # Tailscale はホストのネットワークを操作するため host のまま残す。
+    - name: kuma-network.service
+      enabled: true
+      contents: |
+        [Unit]
+        Description=コンテナ用のネットワークを作り、メタデータサーバーへの通信を遮断する
+        Requires=docker.service
+        After=docker.service
+        PartOf=docker.service
+
+        [Service]
+        Type=oneshot
+        RemainAfterExit=true
+        ExecStart=/bin/sh -c '/usr/bin/docker network inspect kuma >/dev/null 2>&1 || /usr/bin/docker network create kuma'
+        ExecStart=/bin/sh -c '/usr/sbin/iptables -C DOCKER-USER -d 169.254.169.254/32 -j DROP 2>/dev/null || /usr/sbin/iptables -I DOCKER-USER -d 169.254.169.254/32 -j DROP'
+
+        [Install]
+        WantedBy=multi-user.target
+
     - name: uptime-kuma.service
       enabled: true
       contents: |
         [Unit]
         Description=Uptime Kuma
-        Requires=docker.service mnt-data.mount
-        After=docker.service mnt-data.mount tailscale.service
+        Requires=docker.service mnt-data.mount kuma-network.service
+        After=docker.service mnt-data.mount kuma-network.service tailscale.service
 
         [Service]
         ExecStartPre=-/usr/bin/docker rm -f uptime-kuma
         ExecStartPre=-/usr/bin/docker pull louislam/uptime-kuma:2
-        ExecStart=/usr/bin/docker run --name uptime-kuma --network host \
+        ExecStart=/usr/bin/docker run --name uptime-kuma --network kuma -p 3001:3001 \
           -v /mnt/data/uptime-kuma:/app/data \
           louislam/uptime-kuma:2
         ExecStop=/usr/bin/docker stop uptime-kuma
@@ -127,15 +148,15 @@ systemd:
       contents: |
         [Unit]
         Description=Cloudflare Tunnel
-        Requires=docker.service
-        After=docker.service uptime-kuma.service network-online.target
+        Requires=docker.service kuma-network.service
+        After=docker.service kuma-network.service uptime-kuma.service network-online.target
         Wants=network-online.target
 
         [Service]
         EnvironmentFile=/etc/uptime-kuma/cloudflared.env
         ExecStartPre=-/usr/bin/docker rm -f cloudflared
         ExecStartPre=-/usr/bin/docker pull cloudflare/cloudflared:latest
-        ExecStart=/usr/bin/docker run --name cloudflared --network host \
+        ExecStart=/usr/bin/docker run --name cloudflared --network kuma \
           -e TUNNEL_TOKEN \
           cloudflare/cloudflared:latest tunnel --no-autoupdate run
         ExecStop=/usr/bin/docker stop cloudflared

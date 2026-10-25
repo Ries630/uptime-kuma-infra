@@ -30,7 +30,7 @@ resource "cloudflare_zero_trust_tunnel_cloudflared_config" "uptime_kuma" {
     ingress = [
       {
         hostname = var.status_hostname
-        service  = "http://localhost:3001"
+        service  = "http://uptime-kuma:3001"
       },
       {
         service = "http_status:404"
