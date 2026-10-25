@@ -7,10 +7,14 @@ locals {
   github_owner_id      = "82589136"
 }
 
+# サービスアカウントの認証では、API の利用がそのアカウントのプロジェクトに付くため、
+# plan が読む IAM ポリシーと API の有効化状態の API もこのプロジェクトで有効にしておく。
 resource "google_project_service" "ci" {
   for_each = toset([
+    "cloudresourcemanager.googleapis.com",
     "iam.googleapis.com",
     "iamcredentials.googleapis.com",
+    "serviceusage.googleapis.com",
     "sts.googleapis.com",
   ])
 
