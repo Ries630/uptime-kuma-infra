@@ -46,7 +46,7 @@
 
    | 変数 | 内容 |
    |---|---|
-   | `CLOUDFLARE_API_TOKEN` | Account: Cloudflare Tunnel Write、Access: Apps and Policies Write、Access: Organizations, Identity Providers, and Groups Read／Zone: DNS Write、Zone Read |
+   | `CLOUDFLARE_API_TOKEN` | Account: Cloudflare One Connector: cloudflared Edit（旧名 Cloudflare Tunnel Write）、Access: Apps and Policies Write、Access: Organizations, Identity Providers, and Groups Read／Zone: DNS Write、Zone Read |
    | `TF_VAR_tailscale_auth_key` | 使い捨ての認証キー。初回ログイン後は不要 |
 
 3. `terraform.tfvars.example` を `terraform.tfvars` にコピーして値を入れ、`terraform init` する
