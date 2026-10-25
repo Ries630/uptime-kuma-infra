@@ -1,0 +1,91 @@
+name: terraform-plan
+
+on:
+  pull_request:
+    paths:
+      - '*.tf'
+      - '.terraform.lock.hcl'
+      - 'butane/**'
+      - 'scripts/terraform/**'
+      - '.github/workflows/terraform-plan.yml'
+
+permissions: {}
+
+concurrency:
+  group: terraform-plan-${{ github.event.pull_request.number }}
+  cancel-in-progress: false
+
+jobs:
+  plan:
+    # 所有者が同じリポジトリから出した PR だけ。fork や他人の PR では秘密の入力を渡さない。
+    if: >-
+      github.event.pull_request.head.repo.full_name == github.repository &&
+      github.event.pull_request.user.login == github.repository_owner &&
+      github.actor == github.repository_owner
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    environment: terraform-plan
+    permissions:
+      contents: read
+      id-token: write
+    env:
+      EXPECTED_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 24
+      - name: Check trusted PR context
+        run: node scripts/terraform/plan.mjs check-context
+      - uses: hashicorp/setup-terraform@dfe3c3f87815947d99a8997f908cb6525fc44e9e # v4.0.1
+        with:
+          terraform_version: 1.16.5
+          terraform_wrapper: false
+      - name: Install pinned renderer
+        run: node scripts/terraform/install-tfplan2md.mjs "$RUNNER_TEMP/tfplan2md"
+      - uses: google-github-actions/auth@7c6bc770dae815cd3e89ee6cdf493a5fab2cc093 # v3.0.0
+        with:
+          workload_identity_provider: ${{ vars.GCP_WORKLOAD_IDENTITY_PROVIDER }}
+          service_account: ${{ vars.GCP_SERVICE_ACCOUNT }}
+      - name: Generate verified public report
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          TERRAFORM_INPUTS: ${{ secrets.TERRAFORM_INPUTS }}
+          TFPLAN2MD_PATH: ${{ runner.temp }}/tfplan2md/tfplan2md
+        run: node scripts/terraform/plan.mjs "$RUNNER_TEMP/plan-public/report.md"
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: terraform-plan-public-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/plan-public/report.md
+          retention-days: 1
+          if-no-files-found: error
+
+  # コメントの書き込み権限は、秘密の入力を持たないこのジョブにだけ与える。
+  publish:
+    needs: plan
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    permissions:
+      contents: read
+      pull-requests: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          persist-credentials: false
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: terraform-plan-public-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/plan-public
+      - uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
+        with:
+          script: |
+            const { readFile } = await import('node:fs/promises');
+            const { pathToFileURL } = await import('node:url');
+            const { publishComment } = await import(pathToFileURL(`${process.env.GITHUB_WORKSPACE}/scripts/terraform/comment.mjs`));
+            const body = await readFile(`${process.env.RUNNER_TEMP}/plan-public/report.md`, 'utf8');
+            await publishComment({ github, ...context.repo, number: context.issue.number,
+              headSha: context.payload.pull_request.head.sha, body });

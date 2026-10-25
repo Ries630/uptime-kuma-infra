@@ -1,0 +1,7 @@
+{
+  "version": "1.47.0",
+  "archives": {
+    "linux-x64": "6d463d5b78b22cbbc6dbcb4cfbcad9be9191821993fa841e2cc520b096993ee7",
+    "macos-arm64": "f1bb90859b42205c0c9e6d2a0f6f211df18b995499ea95db5336406cfaf645e4"
+  }
+}
