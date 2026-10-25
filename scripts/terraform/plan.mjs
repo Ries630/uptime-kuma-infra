@@ -67,6 +67,10 @@ export function describePlanError(error) {
   for (const [, permission] of stderr.matchAll(/(?:Permission '|"permission":\s*")([a-z]+(?:\.[a-zA-Z]+){2})['"]/g)) {
     found.add(`permission:${permission}`);
   }
+  // googleapi の ErrorInfo の reason（SERVICE_DISABLED など）。定数名だけを拾う。
+  for (const [, reason] of stderr.matchAll(/\b(?:reason|Reason)["']?:?\s*["']?([A-Z][A-Z_]{3,})\b/g)) {
+    found.add(`reason:${reason}`);
+  }
   if (/googleapi/.test(stderr)) found.add('api:google');
   if (/api\.cloudflare\.com/.test(stderr)) found.add('api:cloudflare');
   return [...found].sort().slice(0, 20).join(' ');

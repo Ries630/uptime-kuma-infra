@@ -63,5 +63,7 @@ test('失敗の手がかりはアドレスと権限名だけを出す', () => {
     'resource:google_project_iam_member.terraform_plan["roles/viewer"]',
   ].join(' '));
   assert.ok(!detail.includes('alert@example.com'));
+  assert.equal(describePlanError({ stderr: 'googleapi: Error 403: API has not been used.\nDetails:\n[{"@type": "type.googleapis.com/google.rpc.ErrorInfo", "reason": "SERVICE_DISABLED"}]' }),
+    'api:google reason:SERVICE_DISABLED');
   assert.equal(describePlanError(new Error('x')), '');
 });
