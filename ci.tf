@@ -2,11 +2,9 @@
 # このリポジトリの terraform-plan environment で動くジョブだけが、plan 専用のサービスアカウントを借りられる。
 
 locals {
-  github_repository = "Ries630/uptime-kuma-infra"
-  # リポジトリ名の付け替えや同名の作り直しで信頼が引き継がれないよう、数値 ID でも照合する。
+  # Ries630/uptime-kuma-infra とその所有者。名前の付け替えや同名の作り直しで信頼が引き継がれないよう、数値 ID で照合する。
   github_repository_id = "1431804544"
   github_owner_id      = "82589136"
-  github_plan_subject  = "repo:${local.github_repository}:environment:terraform-plan"
 }
 
 resource "google_project_service" "ci" {
@@ -36,13 +34,15 @@ resource "google_iam_workload_identity_pool_provider" "github" {
     "google.subject"             = "assertion.sub"
     "attribute.repository_id"    = "assertion.repository_id"
     "attribute.repository_owner" = "assertion.repository_owner_id"
+    "attribute.environment"      = "assertion.environment"
   }
 
   # このリポジトリの terraform-plan environment 以外のトークンは、交換の時点で拒否する。
+  # sub の書式はリポジトリの OIDC 設定で変わるため、個別のクレームで照合する。
   attribute_condition = join(" && ", [
     "assertion.repository_id == '${local.github_repository_id}'",
     "assertion.repository_owner_id == '${local.github_owner_id}'",
-    "assertion.sub == '${local.github_plan_subject}'",
+    "assertion.environment == 'terraform-plan'",
   ])
 
   oidc {
@@ -59,7 +59,7 @@ resource "google_service_account" "terraform_plan" {
 resource "google_service_account_iam_member" "terraform_plan_wif" {
   service_account_id = google_service_account.terraform_plan.name
   role               = "roles/iam.workloadIdentityUser"
-  member             = "principal://iam.googleapis.com/${google_iam_workload_identity_pool.github.name}/subject/${local.github_plan_subject}"
+  member             = "principalSet://iam.googleapis.com/${google_iam_workload_identity_pool.github.name}/attribute.repository_id/${local.github_repository_id}"
 }
 
 # viewer だけでは IAM ポリシー（バケットの IAM など）を読めないため、securityReviewer を足す。
